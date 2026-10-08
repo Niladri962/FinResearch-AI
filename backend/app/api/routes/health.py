@@ -46,7 +46,7 @@ def system_info(container: ContainerDep, _principal: ViewerDep) -> SystemInfo:
         cache=container.cache.backend,
         auth_enabled=s.auth_enabled,
         limits={
-            "max_upload_mb": s.max_upload_mb, "allowed_extensions": sorted(ALLOWED_EXTENSIONS),
+            "max_upload_mb": s.effective_max_upload_mb, "serverless": s.serverless, "allowed_extensions": sorted(ALLOWED_EXTENSIONS),
             "rate_limit_per_minute": s.rate_limit_per_minute if s.rate_limit_enabled else None,
             "max_query_chars": s.max_query_chars, "disclaimer": DISCLAIMER,
         },

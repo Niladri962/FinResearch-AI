@@ -44,7 +44,7 @@ class AppContainer:
         self.settings = settings
 
         # Infrastructure
-        self.engine = build_engine(settings.resolved_database_url)
+        self.engine = build_engine(settings.resolved_database_url, serverless=settings.serverless)
         Base.metadata.create_all(self.engine)
         self.session_factory = build_session_factory(self.engine)
         self.cache = build_cache(settings.redis_url)
@@ -54,7 +54,7 @@ class AppContainer:
 
         # RAG
         self.embedder = build_embedder(settings)
-        self.vector_store = build_vector_store(settings)
+        self.vector_store = build_vector_store(settings, self.session_factory)
         self.bm25 = BM25Index(self.session_factory)
         self.reranker = build_reranker(settings)
         self.retriever = HybridRetriever(
@@ -101,6 +101,13 @@ class AppContainer:
         }
         components["embeddings"] = {"status": "ok", "provider": self.settings.embedding_provider, "model": self.embedder.name}
         components["reranker"] = {"status": "ok", "provider": self.settings.reranker_provider, "model": self.reranker.name}
+        if self.settings.serverless:
+            # Without DATABASE_URL a serverless deployment keeps data in /tmp and loses it.
+            components["storage"] = {
+                "status": "ok" if self.settings.persistent else "ephemeral",
+                "mode": "serverless",
+                "detail": None if self.settings.persistent else "Set DATABASE_URL: data is lost between invocations.",
+            }
         return components
 
     async def aclose(self) -> None:

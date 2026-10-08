@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from datetime import timedelta
 from typing import BinaryIO
 
 from sqlalchemy import delete, func, select
@@ -10,7 +11,7 @@ from sqlalchemy import delete, func, select
 from app.config import Settings
 from app.financial.metrics import metric_name
 from app.models.database import SessionFactory, session_scope
-from app.models.db import Chunk, Company, Document, FinancialFact, Report
+from app.models.db import Chunk, Company, Document, FinancialFact, Report, utcnow
 from app.models.enums import DOCUMENT_TYPE_LABELS, DocumentStatus, DocumentType
 from app.models.schemas import ChunkOut, CompanyOut, DocumentOut, FactOut
 from app.rag.vector_store import VectorStore
@@ -88,7 +89,7 @@ class DocumentService:
                     size += len(block)
                     if size > self.settings.max_upload_bytes:
                         raise FileTooLargeError(
-                            f"'{display_name}' exceeds the {self.settings.max_upload_mb} MB upload limit."
+                            f"'{display_name}' exceeds the {self.settings.effective_max_upload_mb} MB upload limit."
                         )
                     if not head:
                         head = block[:2048]
@@ -188,14 +189,19 @@ class DocumentService:
         except OSError:
             logger.warning("Could not remove stored file", extra={"document_id": document_id})
 
-    def recover_interrupted(self) -> int:
-        """Mark documents left mid-ingestion by a previous process as failed."""
+    def recover_interrupted(self, older_than_minutes: int = 0) -> int:
+        """Mark documents left mid-ingestion by a previous process as failed.
+
+        ``older_than_minutes`` limits this to work abandoned at least that long ago,
+        for deployments where another instance may still be processing.
+        """
         with session_scope(self._session_factory) as session:
-            stuck = session.execute(
-                select(Document).where(
-                    Document.status.in_([DocumentStatus.QUEUED.value, DocumentStatus.PROCESSING.value])
-                )
-            ).scalars().all()
+            query = select(Document).where(
+                Document.status.in_([DocumentStatus.QUEUED.value, DocumentStatus.PROCESSING.value])
+            )
+            if older_than_minutes:
+                query = query.where(Document.uploaded_at < utcnow() - timedelta(minutes=older_than_minutes))
+            stuck = session.execute(query).scalars().all()
             for document in stuck:
                 document.status = DocumentStatus.FAILED.value
                 document.error = "Processing was interrupted by a restart. Delete and upload the file again."

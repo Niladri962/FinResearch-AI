@@ -6,6 +6,7 @@ Nothing in the codebase reads ``os.environ`` directly; components receive a
 """
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -23,6 +24,12 @@ _PROVIDER_BASE_URLS = {
 }
 
 ALLOWED_EXTENSIONS: frozenset[str] = frozenset({".pdf", ".docx", ".xlsx", ".txt", ".md"})
+SERVERLESS_MAX_UPLOAD_MB = 4
+
+
+def _default_data_dir() -> Path:
+    # Serverless functions can only write to /tmp; everything else is read-only.
+    return Path("/tmp/finresearch") if os.environ.get("VERCEL") else REPO_ROOT / "data"
 
 
 class Settings(BaseSettings):
@@ -81,8 +88,9 @@ class Settings(BaseSettings):
     chunk_max_table_tokens: int = 900
 
     # ── Vector store ─────────────────────────────────────────────────────
-    # auto → Qdrant when QDRANT_URL is set, otherwise the on-disk local store.
-    vector_store: Literal["auto", "qdrant", "local", "memory"] = "auto"
+    # auto → Qdrant when QDRANT_URL is set; otherwise the on-disk local store, or the
+    # SQL database when running serverless (no persistent disk).
+    vector_store: Literal["auto", "qdrant", "database", "local", "memory"] = "auto"
     qdrant_url: str = ""
     qdrant_api_key: str = ""
     qdrant_collection: str = "finresearch_chunks"
@@ -90,7 +98,7 @@ class Settings(BaseSettings):
     # ── Persistence ──────────────────────────────────────────────────────
     database_url: str = ""
     redis_url: str = ""
-    data_dir: Path = REPO_ROOT / "data"
+    data_dir: Path = Field(default_factory=lambda: _default_data_dir())
     model_cache: str = ""          # MODEL_CACHE: where embedding/reranker models are stored (default DATA_DIR/models)
     max_upload_mb: int = Field(50, ge=1, le=500)
 
@@ -108,11 +116,18 @@ class Settings(BaseSettings):
     langchain_project: str = "finresearch-ai"
     otel_exporter_otlp_endpoint: str = ""
 
+    # ── Serverless (Vercel) ──────────────────────────────────────────────
+    # Detected from the platform's VERCEL variable. Serverless functions have no
+    # persistent disk, no background work after the response and a small request
+    # body, so: documents are processed inside the upload request, vectors live in
+    # the SQL database (or Qdrant), and only /tmp is written to.
+    serverless: bool = Field(default_factory=lambda: bool(os.environ.get("VERCEL")))
+
     @field_validator("data_dir", mode="before")
     @classmethod
     def _default_data_dir(cls, value: object) -> object:
         # An empty DATA_DIR in .env means "use the default".
-        return REPO_ROOT / "data" if value in ("", None) else value
+        return value if value not in ("", None) else _default_data_dir()
 
     # ── Derived values ───────────────────────────────────────────────────
     @property
@@ -153,7 +168,19 @@ class Settings(BaseSettings):
     def resolved_vector_store(self) -> str:
         if self.vector_store != "auto":
             return self.vector_store
-        return "qdrant" if self.qdrant_url else "local"
+        if self.qdrant_url:
+            return "qdrant"
+        return "database" if self.serverless else "local"
+
+    @property
+    def effective_max_upload_mb(self) -> int:
+        """Vercel rejects request bodies above 4.5 MB before they reach the app."""
+        return min(self.max_upload_mb, SERVERLESS_MAX_UPLOAD_MB) if self.serverless else self.max_upload_mb
+
+    @property
+    def persistent(self) -> bool:
+        """False when data would be lost between serverless invocations."""
+        return not (self.serverless and not self.database_url)
 
     @property
     def local_vector_path(self) -> Path:
@@ -165,7 +192,7 @@ class Settings(BaseSettings):
 
     @property
     def max_upload_bytes(self) -> int:
-        return self.max_upload_mb * 1024 * 1024
+        return self.effective_max_upload_mb * 1024 * 1024
 
     def ensure_directories(self) -> None:
         for path in (self.data_dir, self.upload_dir, self.model_cache_dir):

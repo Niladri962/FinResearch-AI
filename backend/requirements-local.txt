@@ -1,0 +1,12 @@
+# Heavier components for local development, Docker and container hosts.
+# Not installed on Vercel (they exceed serverless size and start-up limits).
+-r requirements.txt
+
+# BGE embeddings and cross-encoder reranking on ONNX Runtime
+fastembed>=0.4
+
+# Ruled-table detection in PDFs
+pdfplumber>=0.11
+
+# Faster server loop and auto-reload
+uvicorn[standard]>=0.30

@@ -288,6 +288,7 @@ export interface SystemInfo {
   auth_enabled: boolean;
   limits: {
     max_upload_mb: number;
+    serverless?: boolean;
     allowed_extensions: string[];
     rate_limit_per_minute: number | null;
     max_query_chars: number;

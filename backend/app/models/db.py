@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Float, ForeignKey, Index, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from app.models.enums import DocumentStatus
@@ -84,6 +84,23 @@ class Chunk(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     document: Mapped[Document] = relationship(back_populates="chunks")
+
+
+class ChunkVector(Base):
+    """Embeddings kept in the SQL database (``VECTOR_STORE=database``).
+
+    Used where there is no persistent disk and no dedicated vector database.
+    Search is exact and done in memory, which suits thousands of passages.
+    """
+
+    __tablename__ = "chunk_vectors"
+
+    chunk_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(36), index=True)
+    dimension: Mapped[int] = mapped_column(Integer)
+    vector: Mapped[bytes] = mapped_column(LargeBinary)            # float32, little-endian
+    payload: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
 
 
 class FinancialFact(Base):

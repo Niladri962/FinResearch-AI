@@ -18,8 +18,11 @@ from typing import Any
 
 import httpx
 import numpy as np
+from sqlalchemy import delete, func, select
 
 from app.config import Settings
+from app.models.database import SessionFactory, session_scope
+from app.models.db import ChunkVector
 from app.utils.errors import VectorStoreError
 from app.utils.logging import get_logger
 
@@ -300,8 +303,91 @@ class QdrantVectorStore(VectorStore):
         return int(result.get("result", {}).get("count", 0))
 
 
-def build_vector_store(settings: Settings) -> VectorStore:
+class SqlVectorStore(VectorStore):
+    """Vectors stored in the relational database, searched exactly in memory.
+
+    For deployments with no persistent disk and no vector database (serverless).
+    The in-memory matrix is rebuilt whenever the stored set changes, detected by a
+    cheap count/latest-timestamp signature, so separate function instances stay
+    consistent without coordinating.
+    """
+
+    backend = "database"
+
+    def __init__(self, session_factory: SessionFactory) -> None:
+        self._session_factory = session_factory
+        self._lock = threading.Lock()
+        self._signature: tuple | None = None
+        self._cache = LocalVectorStore(None)
+
+    def _current_signature(self, session) -> tuple:  # noqa: ANN001
+        count, latest = session.execute(select(func.count(ChunkVector.chunk_id), func.max(ChunkVector.created_at))).one()
+        return (count, str(latest))
+
+    def _refresh(self) -> LocalVectorStore:
+        try:
+            with self._session_factory() as session:
+                signature = self._current_signature(session)
+                if signature == self._signature:
+                    return self._cache
+                with self._lock:
+                    rows = session.execute(select(ChunkVector.chunk_id, ChunkVector.vector, ChunkVector.payload)).all()
+                    cache = LocalVectorStore(None)
+                    cache.upsert([
+                        VectorPoint(chunk_id, np.frombuffer(blob, dtype="<f4").tolist(), payload or {})
+                        for chunk_id, blob, payload in rows
+                    ])
+                    self._cache, self._signature = cache, signature
+                return self._cache
+        except VectorStoreError:
+            raise
+        except Exception as exc:
+            raise VectorStoreError("The vector index could not be read from the database.") from exc
+
+    def ensure_collection(self, dimension: int) -> None:
+        with self._session_factory() as session:
+            existing = session.execute(select(ChunkVector.dimension).limit(1)).scalar_one_or_none()
+        if existing is not None and existing != dimension:
+            raise VectorStoreError(
+                f"The index was built with {existing}-dimensional embeddings but the configured model "
+                f"produces {dimension}. Delete the documents and upload them again after changing EMBEDDING_MODEL."
+            )
+
+    def upsert(self, points: list[VectorPoint]) -> None:
+        if not points:
+            return
+        self.ensure_collection(len(points[0].vector))
+        try:
+            with session_scope(self._session_factory) as session:
+                session.execute(delete(ChunkVector).where(ChunkVector.chunk_id.in_([p.id for p in points])))
+                session.add_all(
+                    ChunkVector(
+                        chunk_id=p.id, document_id=str(p.payload.get("document_id", "")), dimension=len(p.vector),
+                        vector=np.asarray(p.vector, dtype="<f4").tobytes(), payload=p.payload,
+                    )
+                    for p in points
+                )
+        except Exception as exc:
+            raise VectorStoreError("The vector index could not be written to the database.") from exc
+
+    def search(self, vector: list[float], limit: int, flt: SearchFilter | None = None) -> list[VectorHit]:
+        return self._refresh().search(vector, limit, flt)
+
+    def delete_document(self, document_id: str) -> None:
+        with session_scope(self._session_factory) as session:
+            session.execute(delete(ChunkVector).where(ChunkVector.document_id == document_id))
+
+    def count(self) -> int:
+        with self._session_factory() as session:
+            return int(session.execute(select(func.count(ChunkVector.chunk_id))).scalar_one())
+
+
+def build_vector_store(settings: Settings, session_factory: SessionFactory | None = None) -> VectorStore:
     backend = settings.resolved_vector_store
+    if backend == "database":
+        if session_factory is None:
+            raise VectorStoreError("VECTOR_STORE=database needs a database session factory.")
+        return SqlVectorStore(session_factory)
     if backend == "memory":
         return LocalVectorStore(None)
     if backend == "local":

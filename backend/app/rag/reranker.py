@@ -11,6 +11,7 @@ run) the stage degrades to the lexical scorer instead of failing the query.
 """
 from __future__ import annotations
 
+import importlib.util
 import math
 import threading
 from abc import ABC, abstractmethod
@@ -133,4 +134,7 @@ def build_reranker(settings: Settings) -> Reranker:
         return LexicalReranker()
     if provider == "sentence_transformers":
         return SentenceTransformerReranker(settings.reranker_model, cache_dir)
+    if importlib.util.find_spec("fastembed") is None:
+        logger.warning("fastembed is not installed; using the lexical reranker")
+        return LexicalReranker()
     return FastEmbedReranker(settings.reranker_model, cache_dir)

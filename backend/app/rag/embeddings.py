@@ -11,6 +11,7 @@ All providers return L2-normalised vectors so cosine similarity is a dot product
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import math
 import threading
 from abc import ABC, abstractmethod
@@ -215,9 +216,23 @@ class OpenAICompatibleEmbedder(Embedder):
         return self.embed_documents([text])[0]
 
 
+def local_models_available() -> bool:
+    """False on slim installs (e.g. serverless) that omit the ONNX model runtime."""
+    return importlib.util.find_spec("fastembed") is not None
+
+
 def build_embedder(settings: Settings) -> Embedder:
     provider = settings.embedding_provider
     cache_dir = str(settings.model_cache_dir)
+    if provider == "fastembed" and not local_models_available():
+        # Slim deployment without local models: use an embeddings API when one is
+        # configured, otherwise the built-in lexical embedder so the app still works.
+        if settings.embedding_api_key:
+            logger.warning("fastembed is not installed; using the configured embeddings API")
+            model = settings.embedding_model if "/" not in settings.embedding_model else "text-embedding-3-small"
+            return OpenAICompatibleEmbedder(model, settings.embedding_api_key, settings.embedding_base_url)
+        logger.warning("fastembed is not installed and no EMBEDDING_API_KEY is set; using the hash embedder")
+        return HashEmbedder(settings.hash_embedding_dim)
     if provider == "hash":
         return HashEmbedder(settings.hash_embedding_dim)
     if provider == "fastembed":

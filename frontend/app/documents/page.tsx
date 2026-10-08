@@ -36,6 +36,9 @@ export default function DocumentsPage() {
     [],
     pollMs,
   );
+  const system = useApi(api.system);
+  const maxMb = system.data?.limits.max_upload_mb ?? null;
+  const serverless = system.data?.limits.serverless ?? false;
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -45,6 +48,14 @@ export default function DocumentsPage() {
 
   const upload = async (files: File[]) => {
     if (!files.length || uploading) return;
+    // Check sizes here: on a serverless host an oversized request is rejected by the
+    // platform before the API can explain why.
+    const tooBig = maxMb ? files.filter((file) => file.size > maxMb * 1024 * 1024) : [];
+    if (tooBig.length) {
+      setMessages(tooBig.map((file) => ({ ok: false, text: `${file.name}: ${fileSize(file.size)} exceeds this server's ${maxMb} MB upload limit.` })));
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
     setUploading(true);
     setMessages([]);
     try {
@@ -94,10 +105,17 @@ export default function DocumentsPage() {
           <UploadCloud className="h-7 w-7 text-ink-muted" aria-hidden />
           <p className="mt-3 text-sm font-medium text-ink">Drop files here, or</p>
           <button onClick={() => inputRef.current?.click()} disabled={uploading} className="btn-primary mt-3">
-            {uploading ? "Uploading…" : "Choose files"}
+            {uploading ? (serverless ? "Uploading and processing…" : "Uploading…") : "Choose files"}
           </button>
           <input ref={inputRef} type="file" multiple accept={ACCEPT} className="hidden" onChange={(event) => void upload(Array.from(event.target.files || []))} />
-          <p className="mt-3 text-xs text-ink-muted">PDF, DOCX, XLSX, TXT or MD · up to 10 files per upload</p>
+          <p className="mt-3 text-xs text-ink-muted">
+            PDF, DOCX, XLSX, TXT or MD · up to 10 files per upload{maxMb ? ` · ${maxMb} MB per file` : ""}
+          </p>
+          {serverless && (
+            <p className="mt-1 max-w-md text-xs text-ink-muted">
+              This server runs serverless: files are processed during the upload, so keep this page open until it finishes.
+            </p>
+          )}
         </div>
 
         <button onClick={() => setShowOptions((v) => !v)} className="mt-4 flex items-center gap-1 text-xs font-medium text-ink-soft hover:text-ink" aria-expanded={showOptions}>

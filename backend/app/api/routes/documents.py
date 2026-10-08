@@ -44,7 +44,9 @@ def upload_documents(
             continue
         finally:
             upload.file.close()
-        if wait:
+        # Serverless functions are frozen once the response is sent, so there is no
+        # "background": the document is processed before answering.
+        if wait or container.settings.serverless:
             container.ingestion.run(document.id)
             document = container.documents.get(document.id)
         else:

@@ -6,11 +6,12 @@ from typing import Callable, Iterator
 
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 SessionFactory = Callable[[], Session]
 
 
-def build_engine(database_url: str) -> Engine:
+def build_engine(database_url: str, *, serverless: bool = False) -> Engine:
     if database_url.startswith("sqlite"):
         engine = create_engine(database_url, connect_args={"check_same_thread": False, "timeout": 30})
 
@@ -22,6 +23,10 @@ def build_engine(database_url: str) -> Engine:
             cursor.close()
 
         return engine
+    if serverless:
+        # Function instances come and go; holding pooled connections would exhaust the
+        # database. Use the provider's pooled connection string and open per use.
+        return create_engine(database_url, poolclass=NullPool, pool_pre_ping=True)
     return create_engine(database_url, pool_pre_ping=True, pool_size=5, max_overflow=10)
 
 

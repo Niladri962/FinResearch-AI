@@ -1,16 +1,36 @@
 """FastAPI dependencies: container access, authentication, RBAC and rate limiting."""
 from __future__ import annotations
 
+import threading
 from typing import Annotated, Callable
 
-from fastapi import Depends, Request
+from fastapi import Depends, FastAPI, Request
 
 from app.services.container import AppContainer
 from app.utils.security import Principal, Role, authenticate, require_role
 
 
+_container_lock = threading.Lock()
+
+
+def ensure_container(app: FastAPI) -> AppContainer:
+    """Return the app's container, building it on first use.
+
+    Normally the lifespan handler builds it at start-up. Some serverless runtimes
+    never send ASGI lifespan events, so the first request builds it instead.
+    """
+    container = getattr(app.state, "container", None)
+    if container is None:
+        with _container_lock:
+            container = getattr(app.state, "container", None)
+            if container is None:
+                container = app.state.container_factory()
+                app.state.container = container
+    return container
+
+
 def get_container(request: Request) -> AppContainer:
-    return request.app.state.container
+    return ensure_container(request.app)
 
 
 ContainerDep = Annotated[AppContainer, Depends(get_container)]

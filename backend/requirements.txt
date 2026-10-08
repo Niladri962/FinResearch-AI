@@ -1,6 +1,13 @@
+# Core dependencies — everything the API needs, small enough for a serverless
+# function. Vercel installs exactly this file.
+#
+# Local development and Docker also install requirements-local.txt (on-device
+# embedding/reranking models and ruled-table detection). Without it the app uses an
+# embeddings API or the built-in lexical embedder, and reads tables from text.
+
 # Web / API
 fastapi>=0.115
-uvicorn[standard]>=0.30
+uvicorn>=0.30
 pydantic>=2.7
 pydantic-settings>=2.3
 python-multipart>=0.0.9
@@ -12,7 +19,6 @@ psycopg[binary]>=3.2
 redis>=5.0
 
 # RAG (Qdrant is accessed over its REST API with httpx — no gRPC dependency)
-fastembed>=0.4
 rank-bm25>=0.2.2
 numpy>=1.26
 
@@ -22,6 +28,5 @@ langchain-core>=0.3
 
 # Document processing
 pymupdf>=1.24
-pdfplumber>=0.11
 python-docx>=1.1
 openpyxl>=3.1

@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.api.deps import ensure_container
 from app.api.routes import analysis, chat, companies, documents, health, reports
 from app.config import Settings, get_settings
 from app.llm.base import LLMClient
@@ -30,25 +31,33 @@ def _error(status_code: int, code: str, message: str, details: dict | None = Non
 def create_app(settings: Settings | None = None, *, llm: LLMClient | None = None) -> FastAPI:
     settings = settings or get_settings()
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    def build_container() -> AppContainer:
         configure_logging(settings.log_level)
         configure_tracing(settings)
         container = AppContainer(settings, llm=llm)
-        recovered = container.documents.recover_interrupted()
-        app.state.container = container
+        recovered = container.documents.recover_interrupted(
+            # Another serverless instance may be mid-ingestion; only reap long-abandoned work.
+            older_than_minutes=20 if settings.serverless else 0
+        )
         logger.info(
             "startup",
             extra={
                 "environment": settings.environment, "llm_provider": container.llm.provider,
-                "embedding_provider": settings.embedding_provider, "vector_store": container.vector_store.backend,
-                "database": container.engine.dialect.name, "recovered_documents": recovered,
+                "embedding_model": container.embedder.name, "vector_store": container.vector_store.backend,
+                "database": container.engine.dialect.name, "serverless": settings.serverless,
+                "recovered_documents": recovered,
             },
         )
+        return container
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        container = ensure_container(app)
         try:
             yield
         finally:
             await container.aclose()
+            app.state.container = None
 
     app = FastAPI(
         title=settings.app_name,
@@ -59,6 +68,8 @@ def create_app(settings: Settings | None = None, *, llm: LLMClient | None = None
         openapi_url=f"{settings.api_prefix}/openapi.json",
         redoc_url=None,
     )
+    app.state.container = None
+    app.state.container_factory = build_container
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
