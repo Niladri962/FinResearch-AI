@@ -1194,6 +1194,51 @@ Production recommendations:
 * Use managed Redis
 * Use Qdrant Cloud or another production vector store
 
+### Step-by-step: Vercel frontend + hosted backend
+
+Vercel hosts the Next.js frontend only. The backend cannot run on Vercel: it loads embedding and reranking models, keeps uploaded files, a database and a search index on disk, and spends minutes processing a large report — none of which fits serverless functions. Deploy the backend to a container host first, then point the frontend at it.
+
+**1. Backend (Render shown; Railway, Fly.io or AWS work the same way)**
+
+1. In Render choose **New → Blueprint** and select this repository. [render.yaml](render.yaml) creates the API service, a PostgreSQL database and a persistent disk at `/data`.
+2. Fill in the prompted variables:
+   * `LLM_API_KEY` — for generated answers (leave empty for extractive mode)
+   * `QDRANT_URL` / `QDRANT_API_KEY` — a [Qdrant Cloud](https://cloud.qdrant.io) cluster, or remove both and set `VECTOR_STORE=local` to keep vectors on the disk
+   * `API_KEYS` — e.g. `<long-random-string>:admin` (the blueprint turns `AUTH_ENABLED` on)
+   * `CORS_ORIGINS` — leave blank for now; it is set in step 3
+3. Deploy and note the public URL, e.g. `https://finresearch-api.onrender.com`. Opening `…/api/health` should return `"status": "ok"`.
+
+Use an instance with **at least 2 GB of memory** (the blueprint requests one). The default models need about 1 GB at rest and more while embedding a large report; a 512 MB instance is killed during ingestion. To run on a small instance, set `EMBEDDING_PROVIDER=openai` and `RERANKER_PROVIDER=lexical` so no model is loaded in-process.
+
+**2. Frontend on Vercel**
+
+1. At [vercel.com/new](https://vercel.com/new) import this repository.
+2. Set **Root Directory** to `frontend`. The framework is detected as Next.js; [frontend/vercel.json](frontend/vercel.json) adds security headers.
+3. Add the environment variable `NEXT_PUBLIC_API_URL` with your backend URL from step 1 — `https://`, no trailing slash.
+4. Deploy.
+
+`NEXT_PUBLIC_API_URL` is compiled into the browser bundle, so changing it requires a redeploy. If it is missing or uses `http://`, the app shows a banner explaining what to fix instead of failing silently.
+
+**3. Connect the two**
+
+Set these on the backend and redeploy it:
+
+```env
+CORS_ORIGINS=https://<your-project>.vercel.app
+# optional: also allow Vercel preview deployments
+CORS_ORIGIN_REGEX=https://<your-project>(-[a-z0-9-]+)?\.vercel\.app
+```
+
+Open the Vercel URL, go to **Settings**, paste the key you put in `API_KEYS`, and save. That key identifies you to your backend and is stored only in your browser. LLM, embedding and Qdrant keys stay on the backend and never reach Vercel.
+
+| Symptom | Cause |
+|---|---|
+| Red banner: "no backend configured" | `NEXT_PUBLIC_API_URL` not set on Vercel, or set after the last build |
+| "Cannot reach the API" while the backend is up | The Vercel origin is not in `CORS_ORIGINS` / `CORS_ORIGIN_REGEX` |
+| HTTP 401 on every page | `AUTH_ENABLED=true` and no key saved on the Settings page |
+| First request takes about a minute | Idle backend instances sleep on some plans and reload models on wake |
+| Upload fails on a large PDF | Instance out of memory (see the 2 GB note), or the host's request-size limit is below `MAX_UPLOAD_MB` |
+
 ---
 
 # ⚠️ Known Limitations

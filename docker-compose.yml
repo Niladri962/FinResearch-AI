@@ -16,6 +16,7 @@ services:
       ENVIRONMENT: production
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-}
       DATA_DIR: /data
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-finresearch}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-finresearch}
       VECTOR_STORE: qdrant

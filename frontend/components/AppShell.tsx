@@ -15,7 +15,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+
+import { apiConfigProblem } from "@/lib/api";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -31,6 +33,8 @@ const NAV = [
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => setProblem(apiConfigProblem()), []);
   const fullBleed = pathname.startsWith("/chat");
 
   const nav = (
@@ -99,6 +103,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
           <span className="text-sm font-semibold">FinResearch AI</span>
         </header>
+        {problem && (
+          <p className="no-print border-b border-line bg-raised px-5 py-2.5 text-sm text-ink" role="alert">
+            <span className="mr-2 inline-block h-2 w-2 rounded-full bg-critical align-middle" aria-hidden />
+            {problem}
+          </p>
+        )}
         <main className={`min-h-0 flex-1 ${fullBleed ? "overflow-hidden" : "overflow-y-auto"}`}>
           {fullBleed ? children : <div className="mx-auto max-w-6xl px-5 py-7 sm:px-8">{children}</div>}
         </main>

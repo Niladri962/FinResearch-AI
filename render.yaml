@@ -5,6 +5,7 @@ services:
     name: finresearch-api
     runtime: docker
     rootDir: backend
+    plan: standard          # 2 GB RAM: the default embedding and reranking models need it
     healthCheckPath: /api/health
     disk:
       name: finresearch-data
@@ -28,7 +29,9 @@ services:
       - key: LLM_API_KEY
         sync: false
       - key: CORS_ORIGINS
-        sync: false          # your Vercel URL, e.g. https://finresearch.vercel.app
+        sync: false          # your Vercel production URL, e.g. https://finresearch-ai.vercel.app
+      - key: CORS_ORIGIN_REGEX
+        sync: false          # optional, for Vercel previews: https://finresearch-ai(-[a-z0-9-]+)?\.vercel\.app
       - key: AUTH_ENABLED
         value: "true"
       - key: API_KEYS

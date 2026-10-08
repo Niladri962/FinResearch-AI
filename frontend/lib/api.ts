@@ -22,6 +22,21 @@ import type {
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
 const KEY_STORAGE = "finresearch.apiKey";
 
+/** Why this deployment cannot reach its backend, or null when the configuration looks sound.
+ *  Catches the two mistakes that otherwise fail silently on a hosted frontend. */
+export function apiConfigProblem(): string | null {
+  if (typeof window === "undefined") return null;
+  const pageIsLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  if (pageIsLocal) return null;
+  if (/\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(API_URL)) {
+    return "This deployment has no backend configured. Set NEXT_PUBLIC_API_URL to your API's public URL in the hosting dashboard and redeploy.";
+  }
+  if (window.location.protocol === "https:" && API_URL.startsWith("http://")) {
+    return "The backend URL uses http:// but this site is served over https://, so the browser blocks the requests. Use an https:// backend URL in NEXT_PUBLIC_API_URL and redeploy.";
+  }
+  return null;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -76,7 +91,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       cache: "no-store",
     });
   } catch {
-    throw new ApiError(0, "network_error", `Cannot reach the API at ${API_URL}. Is the backend running?`);
+    throw new ApiError(0, "network_error", apiConfigProblem() || `Cannot reach the API at ${API_URL}. Is the backend running?`);
   }
   if (!response.ok) throw await toError(response);
   return response.status === 204 ? (undefined as T) : ((await response.json()) as T);

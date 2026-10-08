@@ -65,6 +65,26 @@ class TestSystem:
         assert response.headers["x-content-type-options"] == "nosniff"
         assert response.headers["x-frame-options"] == "DENY" and len(response.headers["x-request-id"]) == 12
 
+    def test_cors_allows_configured_origins_and_preview_pattern(self, tmp_path: Path):
+        settings = make_settings(
+            tmp_path, cors_origins="https://finresearch-ai.vercel.app",
+            cors_origin_regex=r"https://finresearch-ai(-[a-z0-9-]+)?\.vercel\.app",
+        )
+        with TestClient(create_app(settings)) as hosted:
+            def allowed(origin: str) -> str | None:
+                return hosted.get("/api/health", headers={"Origin": origin}).headers.get("access-control-allow-origin")
+
+            assert allowed("https://finresearch-ai.vercel.app") == "https://finresearch-ai.vercel.app"
+            preview = "https://finresearch-ai-git-main-niladri962.vercel.app"
+            assert allowed(preview) == preview
+            assert allowed("https://evil.example.com") is None
+            assert allowed("https://finresearch-ai.vercel.app.evil.com") is None
+            preflight = hosted.options("/api/chat", headers={
+                "Origin": preview, "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type,x-api-key",
+            })
+            assert preflight.status_code == 200 and preflight.headers["access-control-allow-origin"] == preview
+
     def test_openapi_documents_the_required_endpoints(self, client):
         paths = client.get("/api/openapi.json").json()["paths"]
         for path, method in [

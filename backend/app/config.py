@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     api_prefix: str = "/api"
     cors_origins: str = "http://localhost:3000"
+    # Optional regex for origins that change per deployment, e.g. Vercel previews:
+    # https://my-app(-[a-z0-9-]+)?\.vercel\.app
+    cors_origin_regex: str = ""
 
     # ── LLM ──────────────────────────────────────────────────────────────
     llm_provider: Literal["auto", "groq", "openai", "local", "none"] = "auto"
