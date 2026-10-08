@@ -1,0 +1,39 @@
+# Render blueprint for the backend API (https://render.com/docs/blueprint-spec).
+# Pair it with Qdrant Cloud for vectors and deploy the frontend on Vercel (root directory: frontend).
+services:
+  - type: web
+    name: finresearch-api
+    runtime: docker
+    rootDir: backend
+    healthCheckPath: /api/health
+    disk:
+      name: finresearch-data
+      mountPath: /data
+      sizeGB: 5
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATA_DIR
+        value: /data
+      - key: DATABASE_URL
+        fromDatabase:
+          name: finresearch-db
+          property: connectionString
+      - key: VECTOR_STORE
+        value: qdrant
+      - key: QDRANT_URL
+        sync: false          # your Qdrant Cloud cluster URL
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false          # your Vercel URL, e.g. https://finresearch.vercel.app
+      - key: AUTH_ENABLED
+        value: "true"
+      - key: API_KEYS
+        sync: false          # key:role pairs, e.g. <random>:analyst,<random>:admin
+
+databases:
+  - name: finresearch-db
+    plan: basic-256mb

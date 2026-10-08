@@ -1,0 +1,18 @@
+# Optional extras — the app detects these at runtime and works without them.
+
+# PyTorch-based embeddings / cross-encoder reranking
+# (EMBEDDING_PROVIDER=sentence_transformers, RERANKER_PROVIDER=sentence_transformers)
+sentence-transformers>=3.0
+
+# LLM-judged RAG metrics (scripts/run_evaluation.py --ragas)
+ragas>=0.2
+datasets>=2.19
+langchain-openai>=0.2
+
+# OpenTelemetry export (set OTEL_EXPORTER_OTLP_ENDPOINT)
+opentelemetry-api>=1.25
+opentelemetry-sdk>=1.25
+opentelemetry-exporter-otlp-proto-http>=1.25
+
+# LangSmith tracing (set LANGCHAIN_TRACING_V2=true + LANGCHAIN_API_KEY)
+langsmith>=0.1
