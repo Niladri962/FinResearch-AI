@@ -1,413 +1,1360 @@
 # FinResearch AI
 
+<p align="center">
+
 **AI-Powered Financial Research & Analysis Platform**
 
-Upload annual reports, quarterly results, earnings-call transcripts and financial statements, then ask questions in plain English. Every answer is backed by evidence retrieved from your documents and cites the exact page it came from. Every ratio, growth rate and comparison is **calculated in Python**, never by the language model.
+Transform financial documents into **evidence-grounded insights, financial analysis, comparisons, and research reports** using RAG, LangGraph agents, deterministic financial calculations, and AI guardrails.
 
-> FinResearch AI is an analytical research assistant, not a financial advisor. Its output may contain errors and should be independently verified. It does not give investment advice or guarantee future performance.
+</p>
+
+<p align="center">
+
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python\&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi\&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=next.js\&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-Agentic_AI-1C3C3C)
+![RAG](https://img.shields.io/badge/RAG-Hybrid-7C3AED)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+</p>
 
 ---
 
-## Contents
+## 📌 Overview
 
-- [Problem](#problem) · [Key features](#key-features) · [Screenshots](#screenshots)
-- [Architecture](#architecture) · [RAG pipeline](#rag-pipeline) · [Agent architecture](#agent-architecture) · [Data model](#data-model)
-- [Tech stack](#tech-stack) · [Project structure](#project-structure)
-- [Local setup](#local-setup) · [Docker](#docker) · [Environment variables](#environment-variables)
-- [API](#api) · [Evaluation](#evaluation) · [Testing](#testing)
-- [Security](#security) · [Observability](#observability) · [Deployment](#deployment)
-- [Verification status and known limitations](#verification-status-and-known-limitations) · [Future improvements](#future-improvements)
+**FinResearch AI** is an AI-powered financial research and analysis platform designed to analyze annual reports, quarterly results, earnings-call transcripts, financial statements, and other business documents.
+
+Users can upload financial documents and ask questions in natural language. The system retrieves relevant evidence, performs deterministic financial calculations, orchestrates specialized agents, validates citations and numerical claims, and generates grounded research responses.
+
+Unlike a conventional **"Chat with PDF"** application, FinResearch AI is specifically designed around the challenges of financial documents:
+
+* Financial tables
+* Reporting periods
+* Financial ratios
+* Company comparisons
+* Trend analysis
+* Risk analysis
+* Citation verification
+* Numerical grounding
+* Prompt-injection protection
+
+> ⚠️ **Disclaimer:** FinResearch AI is an analytical research assistant, not a financial advisor. Its outputs may contain errors and should be independently verified. It does not provide investment advice, trading recommendations, or guaranteed returns.
 
 ---
 
-## Problem
+# 🎯 Problem
 
-"Chat with a PDF" breaks down on financial documents:
+Traditional RAG systems can struggle with financial documents.
 
-| Failure of naive RAG | What this project does instead |
-|---|---|
-| The model does arithmetic and gets ratios wrong | Statement tables are parsed into structured facts; ratios, CAGR, trends and comparisons are computed by a tested Python engine and handed to the model as citeable values |
-| Fixed-size chunking cuts tables in half | Layout-aware chunking keeps every table whole, repeats headers when a table must be split, and never crosses a section boundary |
-| Embeddings miss exact terms ("Note 14", "FY2024-25") and tables | Hybrid retrieval (dense + BM25), cross-encoder reranking, and a structured lane that guarantees the statement tables behind a metric are retrieved |
-| Answers contain invented numbers and citations | Every answer is validated after generation: unknown citations are removed and each figure is checked against the evidence and the computed values |
-| Every question goes to the LLM | A deterministic router classifies intent; the LLM is only called to write the final answer (and to break ties when the rules are unsure) |
+| Challenge                                   | FinResearch AI Solution                                                  |
+| ------------------------------------------- | ------------------------------------------------------------------------ |
+| LLMs may perform arithmetic incorrectly     | Financial calculations are performed using a deterministic Python engine |
+| Fixed-size chunks can split tables          | Financial-aware and layout-aware chunking                                |
+| Exact financial terms can be missed         | Hybrid semantic + BM25 retrieval                                         |
+| Tables are difficult to retrieve accurately | Dedicated financial-statement retrieval lane                             |
+| LLMs may hallucinate numbers                | Numeric grounding and post-generation validation                         |
+| Citations may not support answers           | Citation verification against retrieved evidence                         |
+| Every query unnecessarily calls an LLM      | Deterministic intent routing                                             |
+| Documents can contain prompt injection      | Input and document-level guardrails                                      |
+| Missing information can cause hallucination | Explicit `Not available` / `Insufficient evidence` handling              |
 
-## Key features
+---
 
-- **Document intelligence** — PDF (PyMuPDF + pdfplumber), DOCX, XLSX, TXT/MD. Detects company, document type, fiscal year/quarter, currency and unit. Recovers ruled *and* unruled tables, strips running headers/footers, handles two-column layouts, OCR for scanned pages when Tesseract is present.
-- **Financial table understanding** — maps row labels to a canonical taxonomy (revenue, EBITDA, borrowings, …) and columns to reporting periods. Conservative by design: an unmapped row is preferred over a wrong number.
-- **Hybrid RAG** — configurable weighted fusion (default 0.7 semantic / 0.3 keyword) or reciprocal-rank fusion, then reranking to the top 6–8 contexts.
-- **Agentic routing** — a LangGraph supervisor dispatches to research, financial, comparison, risk and summary agents based on nine query intents.
-- **Financial engine** — 18 ratios across liquidity, solvency, profitability, efficiency and growth; CAGR; YoY trends; rule-based risk signals; illustrative extrapolation (clearly labelled as such).
-- **Citations** — document, page, section and chunk id; clickable in the UI with a full-passage preview.
-- **Anti-hallucination** — strict prompt contract, post-generation citation and numeric-grounding validation, a fixed "insufficient evidence" response, and "Not available" for missing data.
-- **Guardrails** — prompt injection (direct and planted inside documents), market-manipulation requests, guaranteed-return questions, off-topic requests, advice language in outputs.
-- **Research reports** — 13-section Markdown report with globally numbered sources.
-- **Evaluation** — Recall@K, Precision@K, MRR, context relevance, faithfulness, answer relevance, citation correctness; optional RAGAS.
-- **Works with no infrastructure and no API key** — SQLite, an on-disk vector store and an *extractive* answer mode are the defaults, so the whole pipeline is demonstrable offline. PostgreSQL, Qdrant, Redis and any OpenAI-compatible LLM plug in through environment variables.
+# ✨ Key Features
 
-## Screenshots
+### 📄 Financial Document Intelligence
 
-Captured from the running app with the synthetic sample filings (fictitious companies).
+Supports:
 
-| Dashboard | Financial analysis | Research chat |
-|---|---|---|
+* PDF
+* DOCX
+* XLSX
+* TXT
+* Markdown
+
+The ingestion pipeline extracts:
+
+* Company
+* Document type
+* Fiscal year
+* Quarter
+* Currency
+* Reporting unit
+* Financial tables
+* Sections
+* Financial facts
+
+Supported PDF processing uses **PyMuPDF** and **pdfplumber**, with OCR support when Tesseract is available.
+
+---
+
+### 🔎 Hybrid RAG
+
+FinResearch AI combines:
+
+* Dense semantic retrieval
+* BM25 keyword retrieval
+* Weighted fusion
+* Reciprocal-rank fusion
+* Cross-encoder reranking
+* Structured financial-statement retrieval
+
+Default retrieval configuration:
+
+```text
+Semantic Retrieval → 70%
+Keyword Retrieval  → 30%
+```
+
+The retrieved contexts are then reranked before being passed to the reasoning layer.
+
+---
+
+### 🤖 Agentic AI with LangGraph
+
+The system uses a **LangGraph supervisor architecture** with specialized agents.
+
+```text
+                         User Query
+                             │
+                             ▼
+                       Input Guard
+                             │
+                             ▼
+                   Query Understanding
+                             │
+                             ▼
+                       Supervisor
+                             │
+          ┌──────────┬───────┼────────┬──────────┐
+          ▼          ▼       ▼        ▼          ▼
+       Research   Financial Compare   Risk     Summary
+        Agent      Agent     Agent    Agent     Agent
+          │          │       │        │          │
+          └──────────┴───────┴────────┴──────────┘
+                             │
+                             ▼
+                    Citation Validation
+                             │
+                             ▼
+                    Numeric Verification
+                             │
+                             ▼
+                       Final Answer
+```
+
+### Specialized Agents
+
+| Agent                | Responsibility                              |
+| -------------------- | ------------------------------------------- |
+| **Research Agent**   | Retrieves and synthesizes document evidence |
+| **Financial Agent**  | Calculates ratios, metrics and trends       |
+| **Comparison Agent** | Compares companies and reporting periods    |
+| **Risk Agent**       | Identifies financial risk signals           |
+| **Summary Agent**    | Generates the final research response       |
+
+The architecture supports nine query intents including document Q&A, financial calculations, trend analysis, company comparison, period comparison, risk analysis, management analysis and general finance.
+
+---
+
+# 📊 Financial Analysis Engine
+
+One of the core design principles is:
+
+> **The LLM should reason about financial numbers — not calculate them.**
+
+Financial calculations are performed programmatically using Python.
+
+### Liquidity
+
+* Current Ratio
+* Quick Ratio
+
+### Solvency
+
+* Debt-to-Equity
+* Debt Ratio
+* Interest Coverage
+
+### Profitability
+
+* ROE
+* ROA
+* Net Profit Margin
+* EBITDA Margin
+
+### Efficiency
+
+* Inventory Turnover
+* Receivables Turnover
+* Asset Turnover
+
+### Growth & Trends
+
+* Revenue Growth
+* Profit Growth
+* Asset Growth
+* CAGR
+* YoY trends
+
+### Risk
+
+* Rule-based risk signals
+* Financial deterioration indicators
+* Trend-based observations
+* Illustrative extrapolation
+
+The financial engine currently implements **18 financial ratios** across liquidity, solvency, profitability, efficiency and growth categories.
+
+---
+
+# 🛡️ Grounded AI & Anti-Hallucination
+
+Financial AI requires strong verification because an incorrect number can completely change an analysis.
+
+FinResearch AI therefore uses a multi-stage verification pipeline:
+
+```text
+User Query
+    │
+    ▼
+Input Guard
+    │
+    ▼
+Intent Detection
+    │
+    ▼
+Evidence Retrieval
+    │
+    ▼
+Financial Calculation
+    │
+    ▼
+LLM Reasoning
+    │
+    ▼
+Citation Validation
+    │
+    ▼
+Numeric Grounding
+    │
+    ▼
+Output Guard
+    │
+    ▼
+Verified Response
+```
+
+### Verification capabilities
+
+* Citation validation
+* Numeric grounding
+* Evidence checking
+* Computed-value verification
+* Unknown citation removal
+* Insufficient-evidence handling
+* Missing-data handling
+
+When required evidence is unavailable, the system can return:
+
+```text
+Not available
+```
+
+rather than inventing a value.
+
+---
+
+# 🔐 AI Security & Guardrails
+
+FinResearch AI includes multiple AI-security controls.
+
+### Prompt Injection Protection
+
+Protects against:
+
+* Direct prompt injection
+* Prompt injection embedded inside uploaded documents
+* Instructions disguised as financial content
+
+Retrieved documents are treated as **untrusted data** rather than trusted instructions.
+
+### Financial Safety
+
+The system also detects and handles:
+
+* Guaranteed-return requests
+* Market-manipulation requests
+* Investment-advice language
+* Off-topic requests
+
+---
+
+# 📚 Evidence & Citations
+
+A major design principle is **traceability**.
+
+Financial answers can reference:
+
+```text
+Document
+   ↓
+Page
+   ↓
+Section
+   ↓
+Chunk
+   ↓
+Financial Fact
+   ↓
+Calculation
+   ↓
+Answer
+```
+
+Example:
+
+```text
+Debt-to-Equity: 0.64x
+
+Formula:
+Total Debt / Shareholders' Equity
+
+Total Debt:
+INR 3,500 crore
+
+Shareholders' Equity:
+INR 5,500 crore
+
+Source:
+Annual Report FY2025
+Consolidated Balance Sheet
+Page 5
+```
+
+This makes the output easier to audit and independently verify.
+
+---
+
+# 📸 Screenshots
+
+> Screenshots below are the **existing project images** and have intentionally been retained unchanged.
+
+| Dashboard                                         | Financial Analysis                                             | Research Chat                                                   |
+| ------------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------- |
 | ![Dashboard](docs/screenshots/dashboard-dark.png) | ![Financial analysis](docs/screenshots/financial-analysis.png) | ![Research chat](docs/screenshots/research-chat-comparison.png) |
 
+Captured from the running application using synthetic sample financial filings.
+
 ---
 
-## Architecture
+# 🏗️ Architecture
 
 ```mermaid
 flowchart LR
-    UI["Next.js UI<br/>Dashboard · Chat · Analysis · Reports"] -- "REST + SSE" --> API
 
-    subgraph Backend["FastAPI backend"]
-        API["API layer<br/>auth · rate limit · validation"] --> SVC["Services<br/>documents · chat · analysis · reports"]
-        SVC --> AG["Agent graph<br/>(LangGraph supervisor)"]
-        SVC --> ING["Ingestion pipeline"]
-        AG --> RET["Hybrid retriever"]
-        AG --> FIN["Financial engine<br/>(pure Python)"]
-        AG --> LLMC["LLM client<br/>(provider abstraction)"]
-        AG --> GR["Guardrails +<br/>citation validator"]
+    UI["Next.js UI<br/>Dashboard · Chat · Analysis · Reports"]
+        -- REST + SSE -->
+    API
+
+    subgraph Backend["FastAPI Backend"]
+
+        API["API Layer<br/>Auth · Validation · Rate Limiting"]
+            --> SVC["Service Layer<br/>Documents · Chat · Analysis · Reports"]
+
+        SVC --> AG["LangGraph Agent Graph"]
+        SVC --> ING["Document Ingestion"]
+
+        AG --> RET["Hybrid Retriever"]
+        AG --> FIN["Financial Engine"]
+        AG --> LLM["LLM Provider"]
+        AG --> GR["Guardrails + Citation Validator"]
+
     end
 
-    ING --> PG[("PostgreSQL / SQLite<br/>documents · chunks · facts")]
-    ING --> VS[("Qdrant / local store<br/>embeddings")]
+    ING --> DB[("PostgreSQL / SQLite<br/>Documents · Chunks · Facts")]
+    ING --> VS[("Qdrant / Local Vector Store")]
+
     RET --> VS
-    RET --> PG
-    FIN --> PG
-    LLMC --> EXT["Groq · OpenAI · local model"]
-    API -.-> RD[("Redis<br/>cache · rate limits")]
+    RET --> DB
+
+    FIN --> DB
+
+    LLM --> PROVIDER["Groq · OpenAI · Ollama · vLLM · LM Studio"]
+
+    API -.-> REDIS[("Redis<br/>Cache · Rate Limiting")]
 ```
 
-Layering rule: `api/` only translates HTTP; `services/` holds use-cases; `agents/`, `rag/`, `documents/`, `financial/` and `guardrails/` hold the logic and know nothing about FastAPI. `services/container.py` is the single composition root.
+---
 
-## RAG pipeline
+# 🔄 RAG Pipeline
 
-**Ingestion**
+## Document Ingestion
 
 ```mermaid
 flowchart LR
-    A[Upload] --> B["Validate<br/>extension · magic bytes · size"] --> C["Parse<br/>layout elements"] --> D["Metadata<br/>company · type · period · unit"]
-    D --> E["Financial-aware<br/>chunking"] --> F["Table → facts<br/>metric × period"] --> G[Embed] --> H["Vector store<br/>+ BM25"] --> I[Ready]
+
+    A[Upload]
+    --> B["File Validation"]
+    --> C["Document Parsing"]
+    --> D["Metadata Extraction"]
+    --> E["Financial-Aware Chunking"]
+    --> F["Table → Financial Facts"]
+    --> G["Embeddings"]
+    --> H["Vector Store + BM25"]
+    --> I[Ready]
 ```
 
-**Query**
+### Financial-aware chunking
+
+The system recognizes different document sections and chunk types:
+
+```text
+financial_statement
+table
+risk_factor
+management_commentary
+earnings_commentary
+accounting_policy
+notes
+narrative
+```
+
+Each chunk can retain:
+
+* Company
+* Document
+* Fiscal year
+* Page range
+* Section
+* Chunk type
+
+---
+
+# 🔍 Query Pipeline
 
 ```mermaid
 flowchart TD
-    Q[User query] --> G1["Input guard"] --> U["Query understanding<br/>company · period · metrics · intent"] --> R{Router}
-    R -->|evidence| S["Semantic top-20"] & K["BM25 top-20"] & T["Statement lane<br/>tables for named metrics"]
-    R -->|numbers| C["Financial tools<br/>ratios · trends · comparisons"]
-    S & K --> F["Fusion<br/>0.7 semantic + 0.3 keyword"]
-    F & T --> RR[Reranker] --> CB["Context builder<br/>S1…Sn sources"]
-    C --> CB2["Computed blocks<br/>C1…Cn · T1…Tn"]
-    CB & CB2 --> L["LLM reasoning<br/>(or extractive composer)"] --> V["Citation + numeric<br/>verification"] --> O["Output guard"] --> A[Final answer]
+
+    Q[User Query]
+        --> G["Input Guard"]
+
+    G --> U["Query Understanding"]
+
+    U --> R{Intent Router}
+
+    R -->|Evidence Query| S["Semantic Retrieval"]
+    R -->|Evidence Query| K["BM25 Retrieval"]
+    R -->|Financial Query| F["Financial Tools"]
+
+    S --> FU["Fusion"]
+    K --> FU
+
+    FU --> RR["Cross-Encoder Reranker"]
+
+    RR --> CB["Context Builder"]
+
+    F --> CALC["Computed Financial Blocks"]
+
+    CB --> LLM["LLM Reasoning"]
+    CALC --> LLM
+
+    LLM --> V["Citation + Numeric Verification"]
+
+    V --> O["Output Guard"]
+
+    O --> FINAL["Verified Answer"]
 ```
 
-Design notes:
+---
 
-- **Chunk types** — `financial_statement`, `table`, `risk_factor`, `management_commentary`, `earnings_commentary`, `accounting_policy`, `notes`, `narrative`. Each chunk stores company, document, type, fiscal year, page range and section path (e.g. `Management Discussion and Analysis › Outlook`).
-- **Provenance everywhere** — the embedding, the BM25 index and the reranker all see `company | document title | section` alongside the passage, because a balance sheet never repeats the company's name.
-- **Statement lane** — when a question names a metric or ratio, `financial_facts` is used to find the tables those figures were extracted from, and up to two evidence slots are reserved for them. Cross-encoders rank Markdown tables poorly; this keeps the numbers citeable.
-- **Graceful degradation** — vector store down → keyword-only with a note; reranker model unavailable → lexical reranker; LLM down or unconfigured → extractive answer.
-
-## Agent architecture
+# 🤖 Agent Architecture
 
 ```mermaid
 flowchart TD
-    START((start)) --> GUARD[guard] -->|blocked| END1((end))
-    GUARD --> UND[understand] --> SUP{supervisor}
-    SUP --> RES["Research agent<br/>retrieves evidence"] --> SUP
-    SUP --> FA["Financial agent<br/>ratios · metrics · trends"] --> SUP
-    SUP --> CMP["Comparison agent<br/>companies · periods"] --> SUP
-    SUP --> RISK["Risk agent<br/>quantitative risk signals"] --> SUP
-    SUP --> SUM["Summary agent<br/>writes the answer"] --> VER["verify<br/>citations · figures · output guard"] --> END2((end))
+
+    START((Start))
+        --> GUARD[Input Guard]
+
+    GUARD --> UNDERSTAND[Query Understanding]
+
+    UNDERSTAND --> SUPERVISOR{Supervisor}
+
+    SUPERVISOR --> RESEARCH["Research Agent"]
+    SUPERVISOR --> FINANCIAL["Financial Agent"]
+    SUPERVISOR --> COMPARISON["Comparison Agent"]
+    SUPERVISOR --> RISK["Risk Agent"]
+
+    RESEARCH --> SUPERVISOR
+    FINANCIAL --> SUPERVISOR
+    COMPARISON --> SUPERVISOR
+    RISK --> SUPERVISOR
+
+    SUPERVISOR --> SUMMARY["Summary Agent"]
+
+    SUMMARY --> VERIFY["Verification"]
+
+    VERIFY --> END((Final Answer))
 ```
 
-| Intent | Plan |
-|---|---|
-| `DOCUMENT_QA`, `MANAGEMENT_ANALYSIS` | research (+ financial first if the question names a metric) |
-| `FINANCIAL_CALCULATION`, `TREND_ANALYSIS`, `SUMMARY` | financial → research |
-| `COMPANY_COMPARISON`, `PERIOD_COMPARISON` | comparison → research |
-| `RISK_ANALYSIS` | risk → research |
-| `GENERAL_FINANCE` | summary only (no retrieval; answer is labelled as general knowledge) |
+### Agent routing
 
-Only the summary agent calls the LLM to produce text. Only the financial, comparison and risk agents produce numbers.
+| Query Type            | Agent Plan            |
+| --------------------- | --------------------- |
+| Document Q&A          | Research              |
+| Management Analysis   | Research + Financial  |
+| Financial Calculation | Financial → Research  |
+| Trend Analysis        | Financial → Research  |
+| Summary               | Financial → Research  |
+| Company Comparison    | Comparison → Research |
+| Period Comparison     | Comparison → Research |
+| Risk Analysis         | Risk → Research       |
+| General Finance       | Summary               |
 
-## Data model
+Only the appropriate financial agents produce numerical outputs, while the summary layer is responsible for natural-language generation.
+
+---
+
+# 🗃️ Data Model
 
 ```mermaid
 erDiagram
+
     COMPANY ||--o{ DOCUMENT : has
-    DOCUMENT ||--o{ CHUNK : "split into"
+    DOCUMENT ||--o{ CHUNK : contains
     DOCUMENT ||--o{ FINANCIAL_FACT : yields
-    CHUNK ||--o{ FINANCIAL_FACT : "source of"
+    CHUNK ||--o{ FINANCIAL_FACT : supports
+
     COMPANY ||--o{ REPORT : about
+
     CONVERSATION ||--o{ MESSAGE : contains
-
-    DOCUMENT { string id PK  string document_type  int fiscal_year  int quarter  string status  string sha256 }
-    CHUNK { string id PK  text text  int page_start  int page_end  string section  string chunk_type }
-    FINANCIAL_FACT { string metric  string period_label  float value  float scale  string unit  string currency  int page  float confidence }
-    MESSAGE { string role  text content  json payload }
-    QUERY_TRACE { string intent  float total_ms  json data }
 ```
 
-Vectors live in the vector store keyed by chunk id, with `company_id`, `document_id`, `fiscal_year` and `document_type` as filterable payload.
+### Core entities
+
+```text
+Company
+Document
+Chunk
+FinancialFact
+Conversation
+Message
+QueryTrace
+Report
+```
+
+Financial facts can contain:
+
+* Metric
+* Period
+* Value
+* Scale
+* Unit
+* Currency
+* Page
+* Confidence
 
 ---
 
-## Tech stack
+# 🧰 Technology Stack
 
-| Layer | Choice |
-|---|---|
-| API | Python 3.10+ (3.12 in Docker), FastAPI, Pydantic v2, Uvicorn |
-| Orchestration | LangGraph |
-| Retrieval | BGE embeddings + MiniLM cross-encoder via fastembed (ONNX, no PyTorch); `rank-bm25`; Qdrant over REST |
-| Documents | PyMuPDF, pdfplumber, python-docx, openpyxl |
-| Storage | SQLAlchemy 2 → PostgreSQL or SQLite; Redis (optional) |
-| LLM | Any OpenAI-compatible endpoint: Groq, OpenAI, Ollama/vLLM/LM Studio |
-| Frontend | Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Recharts |
-| Ops | Docker, Docker Compose, Render blueprint, Vercel-ready frontend |
+| Layer                   | Technology                               |
+| ----------------------- | ---------------------------------------- |
+| **Backend**             | Python 3.10+, FastAPI, Pydantic, Uvicorn |
+| **Agent Orchestration** | LangGraph                                |
+| **RAG**                 | Hybrid Semantic + BM25                   |
+| **Embeddings**          | BGE / FastEmbed                          |
+| **Reranking**           | MiniLM Cross-Encoder                     |
+| **Vector Store**        | Qdrant / Local Vector Store              |
+| **Database**            | PostgreSQL / SQLite                      |
+| **Cache**               | Redis                                    |
+| **LLM**                 | OpenAI-compatible APIs                   |
+| **LLM Providers**       | Groq, OpenAI, Ollama, vLLM, LM Studio    |
+| **PDF Processing**      | PyMuPDF, pdfplumber                      |
+| **Office Documents**    | python-docx, openpyxl                    |
+| **Frontend**            | Next.js 15, React 19, TypeScript         |
+| **Styling**             | Tailwind CSS                             |
+| **Charts**              | Recharts                                 |
+| **Deployment**          | Render / Vercel                          |
+| **Containers**          | Docker / Docker Compose                  |
+| **Observability**       | LangSmith / OpenTelemetry                |
 
-Swappable by configuration: LLM provider, embedding provider (`fastembed`, `sentence_transformers`, `openai`, `hash`), reranker (`fastembed`, `sentence_transformers`, `lexical`, `none`), vector store (`qdrant`, `local`, `memory`), database and cache.
+Most major infrastructure components are configurable through environment variables.
 
-## Project structure
+---
 
-```
-backend/
-  app/
-    main.py, config.py
-    api/            deps.py (auth, RBAC, rate limit) · routes/{documents,chat,analysis,companies,reports,health}.py
-    agents/         supervisor.py · router.py · research/financial/comparison/risk/summarization agents · prompts.py
-    rag/            ingestion · chunking · embeddings · vector_store · bm25 · hybrid_search · reranker · retriever
-    documents/      parser.py · table_extractor.py · metadata.py
-    financial/      metrics · periods · calculations · ratios · trends · risk_signals · forecasting
-    guardrails/     input_guard · output_guard · citation_validator
-    evaluation/     retrieval_eval · answer_eval · ragas_eval · runner
-    llm/            base · openai_compatible · factory
-    services/       container (composition root) · documents · chat · analysis · comparison · financials · reports · dashboard
-    models/         db.py (ORM) · schemas.py (Pydantic) · enums.py · database.py
-    utils/          errors · logging · security · cache · rate_limit · observability · formatting · text
-  tests/            366 tests
-frontend/           app/ (8 pages) · components/ · lib/ · hooks/
-scripts/            generate_sample_data.py · seed_demo.py · run_evaluation.py
-evaluation/         dataset.jsonl
-data/samples/       synthetic sample filings
-docker-compose.yml · render.yaml · .env.example
+# 📁 Project Structure
+
+```text
+FinResearch-AI/
+│
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── agents/
+│   │   ├── rag/
+│   │   ├── documents/
+│   │   ├── financial/
+│   │   ├── guardrails/
+│   │   ├── evaluation/
+│   │   ├── llm/
+│   │   ├── services/
+│   │   ├── models/
+│   │   └── utils/
+│   │
+│   └── tests/
+│
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   ├── hooks/
+│   └── lib/
+│
+├── data/
+│   └── samples/
+│
+├── evaluation/
+│   └── dataset.jsonl
+│
+├── scripts/
+│   ├── generate_sample_data.py
+│   ├── seed_demo.py
+│   └── run_evaluation.py
+│
+├── docs/
+│   └── screenshots/
+│
+├── docker-compose.yml
+├── render.yaml
+├── .env.example
+└── README.md
 ```
 
 ---
 
-## Local setup
+# ⚡ Getting Started
 
-No Docker, database or API key is required.
+## Prerequisites
 
-**Backend**
+* Python 3.10+
+* Node.js
+* npm
+* Git
+
+Docker is optional for local development.
+
+---
+
+## 1. Clone the Repository
+
+```bash
+git clone https://github.com/Niladri962/FinResearch-AI.git
+
+cd FinResearch-AI
+```
+
+---
+
+# 2. Backend Setup
 
 ```bash
 cd backend
+
 python -m venv .venv
-# Windows: .venv\Scripts\activate      macOS/Linux: source .venv/bin/activate
+```
+
+### Windows
+
+```bash
+.venv\Scripts\activate
+```
+
+### macOS / Linux
+
+```bash
+source .venv/bin/activate
+```
+
+Install dependencies:
+
+```bash
 pip install -r requirements-dev.txt
-cp ../.env.example ../.env             # optional; every value has a default
+```
+
+Start FastAPI:
+
+```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-API docs: <http://localhost:8000/api/docs>. The first upload downloads the embedding and reranker models (~200 MB) into `data/models`.
+Backend:
 
-**Frontend**
+```text
+http://localhost:8000
+```
+
+API documentation:
+
+```text
+http://localhost:8000/api/docs
+```
+
+---
+
+# 3. Frontend Setup
+
+Open a new terminal:
 
 ```bash
 cd frontend
+
 npm install
-cp .env.example .env.local            # NEXT_PUBLIC_API_URL=http://localhost:8000
-npm run dev                           # http://localhost:3000
 ```
 
-**Sample data** (fictitious companies, generated locally)
+Create:
 
 ```bash
-python scripts/generate_sample_data.py     # writes data/samples/*.pdf and evaluation/dataset.jsonl
-python scripts/seed_demo.py                # uploads them to the running backend
+.env.local
 ```
 
-Then try: *"Why did Aurora's operating margin decline?"*, *"What is Aurora's debt-to-equity ratio?"*, *"Compare Aurora with Borealis."*
+Set:
 
-**Enable generated answers** — set `LLM_API_KEY` in `.env` (a Groq key starting with `gsk_` is auto-detected) and restart. Without a key, answers are *extractive*: computed metrics plus the most relevant passages quoted verbatim.
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
 
-<details>
-<summary>Troubleshooting</summary>
-
-- **Ports 8000/3000 already in use** — run `uvicorn … --port 8765` and set `NEXT_PUBLIC_API_URL` and `CORS_ORIGINS` to match.
-- **Windows: "An Application Control policy has blocked this file"** when importing `charset_normalizer` (a pdfplumber dependency) — install its pure-Python build: `pip install --force-reinstall --no-deps --no-binary charset-normalizer charset-normalizer`. The same policy can block the `psycopg` binary driver; use SQLite locally and PostgreSQL in Docker.
-- **Project inside OneDrive/Dropbox** — set `DATA_DIR` and `MODEL_CACHE` to a folder outside the synced directory to avoid syncing the database, index and models.
-- **Changed the embedding model** — existing vectors have a different dimension. Use a new `QDRANT_COLLECTION` (or delete `data/vectors`) and re-upload.
-</details>
-
-## Docker
+Start the frontend:
 
 ```bash
-cp .env.example .env        # set POSTGRES_PASSWORD; LLM_API_KEY is optional
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+---
+
+# 4. Generate Sample Data
+
+The project includes synthetic financial documents for demonstration.
+
+```bash
+python scripts/generate_sample_data.py
+```
+
+Then seed the running backend:
+
+```bash
+python scripts/seed_demo.py
+```
+
+Example queries:
+
+```text
+Why did Aurora's operating margin decline?
+
+What is Aurora's debt-to-equity ratio?
+
+Compare Aurora with Borealis.
+
+What are the major financial risks?
+
+How has revenue changed over time?
+```
+
+The sample companies are **fictional** and are intended only for demonstration and evaluation.
+
+---
+
+# 🔑 LLM Configuration
+
+FinResearch AI can run without an external LLM using extractive responses.
+
+For generated answers, configure an OpenAI-compatible provider.
+
+Example:
+
+```env
+LLM_PROVIDER=auto
+LLM_API_KEY=your_api_key
+LLM_MODEL=llama-3.3-70b-versatile
+```
+
+The platform can work with:
+
+```text
+Groq
+OpenAI
+Ollama
+vLLM
+LM Studio
+Other OpenAI-compatible endpoints
+```
+
+Without an LLM API key, the application can still provide:
+
+* Retrieved evidence
+* Financial calculations
+* Source citations
+* Extractive answers
+
+---
+
+# 🐳 Docker
+
+Create the environment file:
+
+```bash
+cp .env.example .env
+```
+
+Set the required variables and run:
+
+```bash
 docker compose up --build
 ```
 
-Starts `backend`, `frontend`, `postgres`, `qdrant` and `redis`. Only the UI (3000) and API (8000) are published to the host.
+The Docker environment starts:
 
-## Environment variables
+```text
+Frontend
+Backend
+PostgreSQL
+Qdrant
+Redis
+```
 
-Full list with comments in [.env.example](.env.example). The most important:
+Default host ports:
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `LLM_PROVIDER` / `LLM_API_KEY` / `LLM_MODEL` / `LLM_BASE_URL` | `auto` / – / `llama-3.3-70b-versatile` / – | LLM selection. `auto` picks Groq or OpenAI from the key; `local` targets any OpenAI-compatible server; `none` forces extractive mode |
-| `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` | `fastembed` / `BAAI/bge-small-en-v1.5` | Embedding backend |
-| `RERANKER_PROVIDER` / `RERANKER_MODEL` | `fastembed` / `Xenova/ms-marco-MiniLM-L-6-v2` | Reranker |
-| `SEMANTIC_WEIGHT` / `KEYWORD_WEIGHT` / `FUSION_METHOD` / `RERANK_TOP_N` | `0.7` / `0.3` / `weighted` / `6` | Retrieval tuning |
-| `VECTOR_STORE` / `QDRANT_URL` / `QDRANT_API_KEY` | `auto` / – / – | `auto` → Qdrant when a URL is set, else the local store |
-| `DATABASE_URL` | SQLite in `DATA_DIR` | e.g. `postgresql+psycopg://user:pass@host/db` |
-| `REDIS_URL` | – | Cache and rate-limit counters; in-process fallback |
-| `AUTH_ENABLED` / `API_KEYS` | `false` / – | `key:role` pairs; roles `viewer`, `analyst`, `admin` |
-| `LANGCHAIN_TRACING_V2` / `LANGCHAIN_API_KEY` / `OTEL_EXPORTER_OTLP_ENDPOINT` | off | LangSmith and OpenTelemetry export |
+```text
+Frontend → 3000
+Backend  → 8000
+```
 
 ---
 
-## API
+# ⚙️ Environment Variables
 
-Interactive docs at `/api/docs`. Errors share one envelope: `{"error": {"code", "message", "details"}}`.
+Important configuration variables include:
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/documents/upload` | Multipart upload (1–10 files; optional `company`, `document_type`, `fiscal_year`, `quarter`). Returns `202`; processing continues in the background |
-| `GET` | `/api/documents` · `/api/documents/{id}` | List / status |
-| `GET` | `/api/documents/{id}/facts` | Structured facts extracted from the document's tables |
-| `GET` | `/api/documents/chunks/{chunk_id}` | Full text of a cited passage |
-| `DELETE` | `/api/documents/{id}` | Remove file, chunks, facts and vectors |
-| `GET` | `/api/companies` | Companies with covered periods |
-| `POST` | `/api/chat` | Ask a question. `stream: true` → Server-Sent Events; `false` → JSON |
-| `GET` `DELETE` | `/api/chat/conversations[/{id}]` | Conversation history |
-| `POST` | `/api/analyze` | KPIs, period snapshots, trend charts, risk signals |
-| `POST` | `/api/compare` | ≥2 companies → company comparison; 1 → period comparison |
-| `POST` | `/api/financial-ratios` | Ratios from stored statements or from raw `values` |
-| `POST` | `/api/reports/generate` · `GET /api/reports[/{id}]` | Research reports |
-| `GET` | `/api/dashboard` · `/api/system` · `/api/observability/traces` | Aggregates, non-secret config, query traces |
-| `GET` | `/api/health` | Liveness and component status |
+| Variable                      | Purpose                      |
+| ----------------------------- | ---------------------------- |
+| `LLM_PROVIDER`                | LLM provider selection       |
+| `LLM_API_KEY`                 | LLM API key                  |
+| `LLM_MODEL`                   | LLM model                    |
+| `LLM_BASE_URL`                | OpenAI-compatible endpoint   |
+| `EMBEDDING_PROVIDER`          | Embedding backend            |
+| `EMBEDDING_MODEL`             | Embedding model              |
+| `RERANKER_PROVIDER`           | Reranker backend             |
+| `RERANKER_MODEL`              | Reranker model               |
+| `SEMANTIC_WEIGHT`             | Semantic retrieval weight    |
+| `KEYWORD_WEIGHT`              | BM25 retrieval weight        |
+| `VECTOR_STORE`                | Vector store selection       |
+| `QDRANT_URL`                  | Qdrant endpoint              |
+| `QDRANT_API_KEY`              | Qdrant authentication        |
+| `DATABASE_URL`                | Database connection          |
+| `REDIS_URL`                   | Redis connection             |
+| `AUTH_ENABLED`                | Enable authentication        |
+| `API_KEYS`                    | API key / role configuration |
+| `LANGCHAIN_API_KEY`           | LangSmith integration        |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry endpoint       |
 
-**Chat stream events** — `conversation` → `status` / `meta` (intent, plan) → `artifacts` (calculations, tables, charts) → `sources` → `token`… → `final`. The `final` event carries the verified answer and replaces the streamed draft.
+See `.env.example` for the complete configuration.
 
-```bash
-curl -s localhost:8000/api/chat -H "Content-Type: application/json" \
-  -d '{"message": "What is Aurora'\''s debt-to-equity ratio?", "stream": false}'
+---
+
+# 🔌 API
+
+Interactive API documentation:
+
+```text
+http://localhost:8000/api/docs
 ```
 
-```jsonc
+### Documents
+
+```http
+POST /api/documents/upload
+GET  /api/documents
+GET  /api/documents/{id}
+GET  /api/documents/{id}/facts
+DELETE /api/documents/{id}
+```
+
+### Chat
+
+```http
+POST /api/chat
+GET  /api/chat/conversations
+DELETE /api/chat/conversations/{id}
+```
+
+### Analysis
+
+```http
+POST /api/analyze
+POST /api/compare
+POST /api/financial-ratios
+```
+
+### Reports
+
+```http
+POST /api/reports/generate
+GET  /api/reports
+GET  /api/reports/{id}
+```
+
+### System
+
+```http
+GET /api/dashboard
+GET /api/system
+GET /api/health
+GET /api/observability/traces
+```
+
+---
+
+# 💬 Example API Request
+
+```bash
+curl -s localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"What is Aurora'\''s debt-to-equity ratio?","stream":false}'
+```
+
+Example response:
+
+```json
 {
   "intent": "FINANCIAL_CALCULATION",
-  "mode": "extractive",                       // "generative" when an LLM is configured
-  "calculations": [{
-    "id": "C1", "name": "Debt-to-Equity", "period": "FY2025", "display": "0.64x",
-    "formula": "Total Debt / Shareholders' Equity",
-    "inputs": [
-      {"name": "Total Debt", "display": "INR 3,500 crore", "derived": true,
-       "formula": "Short-Term Borrowings + Long-Term Borrowings"},
-      {"name": "Shareholders' Equity", "display": "INR 5,500 crore",
-       "sources": [{"document_title": "Annual Report FY2025", "page": 5}]}
-    ]
-  }],
-  "citations": [{"id": "S1", "document_title": "Annual Report FY2025", "page": 5, "section": "Consolidated Balance Sheet"}],
-  "validation": {"status": "grounded", "grounding_score": 1.0}
+  "mode": "extractive",
+  "calculations": [
+    {
+      "id": "C1",
+      "name": "Debt-to-Equity",
+      "period": "FY2025",
+      "display": "0.64x",
+      "formula": "Total Debt / Shareholders' Equity"
+    }
+  ],
+  "validation": {
+    "status": "grounded",
+    "grounding_score": 1.0
+  }
 }
 ```
 
-## Evaluation
+---
+
+# 📈 Evaluation
+
+The project includes an evaluation framework for retrieval and answer quality.
+
+Supported metrics include:
+
+* Recall@K
+* Precision@K
+* Mean Reciprocal Rank
+* Context Relevance
+* Faithfulness
+* Answer Relevance
+* Key-Fact Recall
+* Citation Precision
+* Page Hit Rate
+* Optional RAGAS metrics
+
+Run offline evaluation:
 
 ```bash
-python scripts/run_evaluation.py --offline      # hash embeddings, lexical reranker, no LLM
-python scripts/run_evaluation.py --isolated     # models and LLM from .env, isolated temp store
-python scripts/run_evaluation.py                # whatever is already indexed
-python scripts/run_evaluation.py --isolated --ragas   # adds LLM-judged RAGAS metrics (optional deps)
+python scripts/run_evaluation.py --offline
 ```
 
-Dataset format (`evaluation/dataset.jsonl`): `question`, `expected_answer`, `relevant_document`, `relevant_page`, `key_facts`.
-
-Measured on the 13-question synthetic set, k = 5, **no LLM (extractive answers)**:
-
-| Metric | Offline stack (hash + lexical) | BGE-small + MiniLM cross-encoder |
-|---|---|---|
-| Recall@5 / hit rate | 1.00 | 1.00 |
-| MRR | 0.83 | 0.77 |
-| Precision@5 | 0.34 | 0.35 |
-| Faithfulness | 1.00 | 1.00 |
-| Key-fact recall | 0.86 | 0.83 |
-| Citation precision / page hit | 0.67 / 1.00 | 0.71 / 1.00 |
-
-Read these with care: the corpus is four short synthetic documents, there is one labelled page per question, and the generation metrics are lexical proxies measured on extractive answers (which quote sources, so faithfulness is 1.0 by construction). They are a regression baseline, not a benchmark. Before the statement lane was added, Recall@5 with the real models was 0.69 — the misses were all questions answered by a statement table.
-
-## Testing
+Run isolated evaluation:
 
 ```bash
-cd backend && pytest            # 366 tests, ~1 minute, fully offline
-cd frontend && npm run typecheck && npm run build
+python scripts/run_evaluation.py --isolated
 ```
 
-Coverage by area: financial engine, period and label parsing, table extraction, parsers (PDF/DOCX/XLSX/text, invalid and empty files), metadata, chunking, embeddings, vector stores (local store end to end; Qdrant against a stubbed HTTP transport), fusion, reranking, retriever, intent routing, guardrails, citation validation, LLM client (retries, streaming, error mapping), auth/RBAC, rate limiting, log redaction, the agent graph with a scripted LLM, every API endpoint, and the evaluation runner.
+Run with RAGAS:
 
-## Security
+```bash
+python scripts/run_evaluation.py --isolated --ragas
+```
 
-- **Uploads** — extension allow-list, magic-byte and Office-container checks, streamed size limit, SHA-256 de-duplication. Files are stored under server-generated names; the client's filename is only a sanitised display label, and every path is resolved through a traversal guard.
-- **Auth-ready** — `AUTH_ENABLED=true` requires `X-API-Key` or a Bearer token. Three roles: `viewer` (read, chat), `analyst` (+ upload, reports), `admin` (+ delete, traces). Conversations are scoped to their owner. Swapping API keys for JWT/OIDC means replacing one dependency in `api/deps.py`.
-- **Rate limiting** — per-client fixed window, backed by Redis or in-process counters.
-- **Prompt injection** — direct attempts are blocked before retrieval; passages containing embedded instructions are dropped before they reach the model; the system prompt treats sources as untrusted data.
-- **Secrets** — only from environment variables. Model-provider keys never reach the browser. Logs are JSON with credential redaction; provider error bodies are never surfaced to clients.
-- **Network** — CORS allow-list, `nosniff` / `X-Frame-Options` headers, non-root containers, databases unexposed in Compose.
+### Current Regression Baseline
 
-## Observability
+The repository includes a small synthetic evaluation dataset.
 
-Each query produces a trace (table `query_traces`, `GET /api/observability/traces`, and the Settings page): intent, agent plan, latency per stage (understanding, retrieval, embedding, vector search, BM25, rerank, LLM, verification), token usage, retrieved chunk and document ids, validation status and errors. Query text is stored only as a hash unless `TRACE_QUERY_TEXT=true`; document text is never logged. LangGraph runs export to LangSmith via `LANGCHAIN_TRACING_V2`; spans export to any OTLP collector via `OTEL_EXPORTER_OTLP_ENDPOINT` (optional dependencies).
+| Metric              | Offline Stack | BGE + MiniLM |
+| ------------------- | ------------: | -----------: |
+| Recall@5 / Hit Rate |          1.00 |         1.00 |
+| MRR                 |          0.83 |         0.77 |
+| Precision@5         |          0.34 |         0.35 |
+| Faithfulness        |          1.00 |         1.00 |
+| Key-Fact Recall     |          0.86 |         0.83 |
+| Citation Precision  |          0.67 |         0.71 |
+| Page Hit Rate       |          1.00 |         1.00 |
 
-## Deployment
-
-| Component | Target | Notes |
-|---|---|---|
-| Frontend | Vercel | Root directory `frontend`; set `NEXT_PUBLIC_API_URL` to the API's public URL |
-| Backend | Render / Railway / AWS (ECS, App Runner) | `backend/Dockerfile`; honours `$PORT`; health check `/api/health`; mount a volume at `/data`. [render.yaml](render.yaml) is a starting blueprint |
-| Vectors | Qdrant Cloud | `QDRANT_URL` + `QDRANT_API_KEY` |
-| Database | Managed PostgreSQL | `DATABASE_URL` (`postgres://` and `postgresql://` forms are normalised) |
-| Cache | Managed Redis | Optional |
-
-Production checklist: `AUTH_ENABLED=true` with strong keys; `CORS_ORIGINS` set to the frontend origin; TLS at the load balancer; persistent volume for `/data`; run one backend worker per container (BM25 is in-process) and scale horizontally.
+> These results are regression baselines from a small synthetic corpus, not production benchmarks. They should not be interpreted as evidence of real-world financial accuracy.
 
 ---
 
-## Verification status and known limitations
+# 🧪 Testing
 
-What was actually run while building this, and what was not:
+The backend includes extensive automated tests covering:
 
-| Verified | Not verified |
-|---|---|
-| Backend test suite (366 passing) on Python 3.10 / Windows | `docker compose up` — the compose file passes `docker compose config`, but images were not built or run (Docker was not running on the build machine) |
-| Full stack running locally: real BGE + cross-encoder models, background ingestion, persisted local vector store, SSE chat, UI in light and dark themes | PostgreSQL — the code path is standard SQLAlchemy, but only SQLite was exercised |
-| Frontend type-check and production build | Qdrant against a real server — the REST client is tested against a stubbed transport only |
-| Evaluation script in offline and real-model modes | A live LLM provider — generation, streaming, retries and fallbacks are tested with a scripted model and a mocked HTTP transport |
-| | The RAGAS adapter, OpenTelemetry export, OCR, and the Render blueprint |
+* Financial calculations
+* Ratio computation
+* Period parsing
+* Financial label mapping
+* Table extraction
+* PDF/DOCX/XLSX parsing
+* Chunking
+* Embeddings
+* Vector stores
+* Hybrid retrieval
+* Reranking
+* Agent routing
+* Guardrails
+* Citation validation
+* LLM integration
+* Authentication
+* RBAC
+* Rate limiting
+* API endpoints
+* Evaluation pipeline
 
-Known limitations:
+Run backend tests:
 
-- **Table extraction is heuristic.** It was developed against synthetic samples and one real Ind AS annual report (two-page spreads, wrapped rows, standalone + consolidated statements). It expects a recognisable period header and standard line-item labels. Unusual layouts, merged multi-level headers, or scanned tables may yield few or no facts; qualitative Q&A still works, and missing figures are reported as "Not available".
-- **Interim periods.** Quarterly columns are stored but ratios and trends currently use annual figures only.
-- **No currency conversion.** Cross-company comparisons show amounts in each company's reporting currency and say so; compare ratios and margins.
-- **Period-end balances.** ROA, ROE and turnover ratios use period-end rather than average balances (stated in each formula).
-- **Guardrails are pattern-based.** They catch common attacks and are not a substitute for provider-side safety or human review.
-- **Schema management.** Tables are created at start-up; there are no migrations yet.
-- **Single-process indexes.** BM25 lives in memory and is rebuilt when the chunk set changes — fine for thousands of documents, not for millions of chunks.
+```bash
+cd backend
+pytest
+```
 
-## Future improvements
+Frontend checks:
 
-- Alembic migrations; background job queue (Celery/RQ) for ingestion with progress events
-- Vision-model table extraction for scanned and complex statements; XBRL ingestion
-- Quarterly and trailing-twelve-month analytics; average-balance ratios; FX normalisation
-- Sparse vectors in Qdrant (native hybrid search) instead of in-process BM25
-- OIDC/JWT authentication, per-tenant data isolation, audit log
-- LLM-judged evaluation in CI with a larger, real-filing dataset
-- PDF page-image preview with the cited region highlighted
+```bash
+cd frontend
+
+npm run typecheck
+npm run build
+```
+
+---
+
+# 🔒 Security
+
+FinResearch AI includes multiple application and AI-security controls.
+
+### File Security
+
+* Extension allow-list
+* Magic-byte validation
+* File-size limits
+* SHA-256 deduplication
+* Server-generated filenames
+* Path traversal protection
+* Sanitized filenames
+
+### Authentication
+
+Optional API authentication supports:
+
+```text
+viewer
+analyst
+admin
+```
+
+### Rate Limiting
+
+Supports Redis-backed or in-process rate limiting.
+
+### Prompt Injection
+
+The system protects against both:
+
+```text
+Direct prompt injection
+        +
+Prompt injection embedded in documents
+```
+
+### Secrets
+
+Provider keys remain server-side and are loaded through environment variables.
+
+### Network Security
+
+Includes:
+
+* CORS allow-listing
+* Security headers
+* Non-root containers
+* Database isolation in Docker Compose
+
+---
+
+# 📊 Observability
+
+Each query can generate a trace containing:
+
+* Query intent
+* Agent plan
+* Retrieval latency
+* Embedding latency
+* Vector-search latency
+* BM25 latency
+* Reranking latency
+* LLM latency
+* Verification latency
+* Token usage
+* Retrieved document IDs
+* Retrieved chunk IDs
+* Validation status
+* Errors
+
+Optional integrations:
+
+```text
+LangSmith
+OpenTelemetry
+OTLP collectors
+```
+
+---
+
+# ☁️ Deployment
+
+FinResearch AI is structured for cloud deployment.
+
+### Frontend
+
+Recommended:
+
+```text
+Vercel
+```
+
+Set:
+
+```env
+NEXT_PUBLIC_API_URL=https://your-api-url
+```
+
+### Backend
+
+Supported deployment targets include:
+
+```text
+Render
+Railway
+AWS ECS
+AWS App Runner
+```
+
+### Production Infrastructure
+
+```text
+                    ┌──────────────────┐
+                    │      Vercel      │
+                    │   Next.js App    │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │     Render       │
+                    │     FastAPI      │
+                    └───────┬──────────┘
+                            │
+              ┌─────────────┼─────────────┐
+              ▼             ▼             ▼
+        PostgreSQL       Qdrant        Redis
+              │             │             │
+              └─────────────┼─────────────┘
+                            │
+                            ▼
+                       LLM Provider
+```
+
+Production recommendations:
+
+* Enable authentication
+* Use strong API keys
+* Configure CORS correctly
+* Enable TLS
+* Use persistent storage
+* Use managed PostgreSQL
+* Use managed Redis
+* Use Qdrant Cloud or another production vector store
+
+---
+
+# ⚠️ Known Limitations
+
+FinResearch AI is an active research and engineering project.
+
+Current limitations include:
+
+* Financial table extraction is heuristic
+* Complex merged tables may not extract perfectly
+* Scanned tables may require OCR
+* Quarterly analytics are currently limited compared with annual analytics
+* No automatic currency conversion
+* Some financial ratios use period-end balances
+* Guardrails are pattern-based
+* BM25 is currently in-process
+* Database migrations are not yet implemented
+* Real production Qdrant deployment requires separate infrastructure configuration
+* Evaluation uses a small synthetic dataset
+
+These limitations are intentionally documented rather than hidden.
+
+---
+
+# 🛣️ Future Roadmap
+
+### Data & Financial Intelligence
+
+* [ ] XBRL ingestion
+* [ ] NSE/BSE document integration
+* [ ] SEC filing integration
+* [ ] Real-time financial data
+* [ ] Currency normalization
+* [ ] Quarterly analytics
+* [ ] TTM analysis
+* [ ] Advanced peer benchmarking
+
+### RAG & AI
+
+* [ ] Native Qdrant hybrid sparse+dense retrieval
+* [ ] Vision-model financial table extraction
+* [ ] Larger real-world evaluation datasets
+* [ ] LLM-as-a-judge evaluation
+* [ ] Advanced citation verification
+* [ ] Knowledge graph integration
+
+### Security
+
+* [ ] OIDC / OAuth
+* [ ] JWT authentication
+* [ ] Multi-tenant data isolation
+* [ ] Audit logs
+* [ ] Advanced AI security policies
+
+### Platform
+
+* [ ] Background job queue
+* [ ] Research report PDF export
+* [ ] Cited PDF page previews
+* [ ] Human-in-the-loop research workflows
+* [ ] Advanced agent observability
+
+---
+
+# 🧠 What This Project Demonstrates
+
+FinResearch AI demonstrates practical implementation of:
+
+```text
+Generative AI
+      │
+      ├── RAG
+      ├── Hybrid Search
+      ├── Agentic AI
+      ├── LangGraph
+      ├── LLM Orchestration
+      │
+      ├── Financial NLP
+      ├── Document Intelligence
+      ├── Financial Analytics
+      │
+      ├── AI Guardrails
+      ├── Prompt Injection Defense
+      ├── Citation Verification
+      ├── Numeric Grounding
+      │
+      ├── LLM Evaluation
+      ├── Observability
+      └── Production AI Engineering
+```
+
+The project is designed around an important principle:
+
+> **Reliable AI systems require more than an LLM. They require retrieval, deterministic tools, validation, security, evaluation and observability.**
+
+---
+
+# 👨‍💻 Author
+
+## Niladri Ghosh
+
+AI & Data Science | Generative AI | RAG | Agentic AI | Financial AI
+
+### Connect
+
+**GitHub:**
+https://github.com/Niladri962
+
+**Project:**
+https://github.com/Niladri962/FinResearch-AI
+
+---
+
+# 🤝 Contributing
+
+Contributions and suggestions are welcome.
+
+### 1. Fork the repository
+
+### 2. Create a feature branch
+
+```bash
+git checkout -b feature/your-feature
+```
+
+### 3. Commit your changes
+
+```bash
+git commit -m "feat: add your feature"
+```
+
+### 4. Push your branch
+
+```bash
+git push origin feature/your-feature
+```
+
+### 5. Open a Pull Request
+
+---
+
+# ⭐ Support
+
+If you find this project useful:
+
+⭐ **Star the repository**
+
+🍴 **Fork the project**
+
+🐛 **Report issues**
+
+💡 **Suggest improvements**
+
+---
+
+<div align="center">
+
+## FinResearch AI
+
+**From Financial Documents → Evidence → Analysis → Intelligence**
+
+Built with **Python · FastAPI · LangGraph · RAG · Next.js · LLMs**
+
+</div>
